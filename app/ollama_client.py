@@ -4,6 +4,7 @@ OLLAMA_URL = "http://localhost:11434"
 
 class OllamaClient:
     def __init__(self, base_url=OLLAMA_URL):
+        self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=120.0)
 
     async def generate(self, model: str, prompt: str) -> str:

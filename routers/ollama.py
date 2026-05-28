@@ -1,40 +1,18 @@
-from fastapi import APIRouter, HTTPException, StreamingResponse
-import requests
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.ollama_client import OllamaClient
 
 router = APIRouter()
+client = OllamaClient()
+
+class ChatRequest(BaseModel):
+    model: str = "llama3.2:1b"
+    message: str
 
 @router.post("/chat")
-async def chat(message: str):
+async def chat(request: ChatRequest):
     try:
-        response = requests.post("http://ollama-server/chat", json={"message": message})
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/stream")
-async def stream():
-    try:
-        response = requests.get("http://ollama-server/stream", stream=True)
-        response.raise_for_status()
-        return StreamingResponse(response.iter_content(chunk_size=None))
-    except requests.RequestException as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/metrics")
-async def metrics():
-    try:
-        response = requests.get("http://ollama-server/metrics")
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/healthz")
-async def healthz():
-    try:
-        response = requests.get("http://ollama-server/healthz")
-        response.raise_for_status()
-        return {"status": "ok"}
-    except requests.RequestException as e:
+        result = await client.generate(request.model, request.message)
+        return {"response": result}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

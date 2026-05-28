@@ -12,7 +12,10 @@ class OllamaClient:
             f"{self.base_url}/api/generate",
             json={"model": model, "prompt": prompt, "stream": False}
         )
-        return response.json()["response"]
+        data = response.json()
+        if "error" in data:
+            raise Exception(data["error"])
+        return data["response"]
 
     async def close(self):
         await self.client.aclose()

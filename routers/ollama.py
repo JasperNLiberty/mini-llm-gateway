@@ -1,18 +1,71 @@
+import time
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from prometheus_client import Counter, Histogram, Gauge
 from app.ollama_client import OllamaClient
 
 router = APIRouter()
 client = OllamaClient()
 
+# Limit concurrent requests to Ollama
+MAX_CONCURRENT = 2
+queue_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+
+# Prometheus metrics
+REQUESTS = Counter(
+    "chat_requests_total",
+    "Total chat requests",
+    ["model", "status"],
+)
+
+LATENCY = Histogram(
+    "chat_latency_seconds",
+    "Request latency in seconds",
+    ["model"],
+    buckets=[0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+)
+
+TOKENS = Counter(
+    "tokens_generated_total",
+    "Total tokens generated",
+    ["model"],
+)
+
+IN_FLIGHT = Gauge(
+    "chat_in_flight",
+    "Number of requests currently being processed",
+)
+
+QUEUE_DEPTH = Gauge(
+    "chat_queue_depth",
+    "Number of requests waiting in queue",
+)
+
+
 class ChatRequest(BaseModel):
     model: str = "llama3.2:1b"
     message: str
 
+
 @router.post("/chat")
 async def chat(request: ChatRequest):
-    try:
-        result = await client.generate(request.model, request.message)
-        return {"response": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    QUEUE_DEPTH.inc()  # waiting in queue
+    async with queue_semaphore:
+        QUEUE_DEPTH.dec()  # left queue, now processing
+        IN_FLIGHT.inc()
+        start_time = time.time()
+        try:
+            result = await client.generate(request.model, request.message)
+            elapsed = time.time() - start_time
+
+            REQUESTS.labels(model=request.model, status="success").inc()
+            LATENCY.labels(model=request.model).observe(elapsed)
+            TOKENS.labels(model=request.model).inc(result["tokens"])
+
+            return {"response": result["response"]}
+        except Exception as e:
+            REQUESTS.labels(model=request.model, status="error").inc()
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            IN_FLIGHT.dec()

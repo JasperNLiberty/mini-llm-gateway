@@ -2,6 +2,8 @@ import os
 from fastapi import FastAPI
 from prometheus_client import make_asgi_app
 
+from app.cost_tracker import tracker
+
 app = FastAPI()
 
 BACKEND = os.getenv("BACKEND", "ollama")
@@ -9,6 +11,12 @@ BACKEND = os.getenv("BACKEND", "ollama")
 @app.get("/healthz")
 def healthz():
     return {"status": "ok", "backend": BACKEND}
+
+# Cost metrics. Registered before the Prometheus mount below so this route is
+# not shadowed by the /metrics ASGI sub-app.
+@app.get("/metrics/cost")
+def metrics_cost():
+    return tracker.snapshot()
 
 # Load router based on backend
 if BACKEND == "ollama":

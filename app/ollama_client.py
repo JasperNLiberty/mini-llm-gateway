@@ -1,3 +1,5 @@
+import json
+
 import httpx
 
 OLLAMA_URL = "http://localhost:11434"
@@ -40,6 +42,32 @@ class OllamaClient:
             # kept for backward compatibility with existing metrics
             "tokens": output_tokens,
         }
+
+    async def generate_stream(self, model: str, prompt: str, max_tokens: int = 256):
+        """Stream raw Ollama NDJSON chunks as they arrive.
+
+        Yields each decoded chunk dict. Token chunks carry a ``response`` delta;
+        the final chunk has ``done: true`` plus the authoritative timing/usage
+        fields (``eval_count``, ``eval_duration``, ``prompt_eval_count``). The
+        caller is responsible for accumulating text and reading the final stats.
+        """
+        async with self.client.stream(
+            "POST",
+            f"{self.base_url}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": True,
+                "options": {"num_predict": max_tokens},
+            },
+        ) as response:
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                data = json.loads(line)
+                if "error" in data:
+                    raise Exception(data["error"])
+                yield data
 
     async def close(self):
         await self.client.aclose()

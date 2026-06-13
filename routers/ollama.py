@@ -1,19 +1,22 @@
 import json
 import time
-import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from prometheus_client import Counter, Histogram, Gauge
 from app.ollama_client import OllamaClient
 from app.cost_tracker import tracker
+from app import scheduler as scheduling
 
 router = APIRouter()
 client = OllamaClient()
 
-# Limit concurrent requests to Ollama
+# Cap concurrent requests to Ollama (backpressure), and order the wait queue by
+# the configured policy (SCHED_POLICY: fifo|priority|sjf). The cap is unchanged
+# from the prior asyncio.Semaphore; the scheduler adds *which-waiter-next*
+# control on top of it. See app/scheduler.py.
 MAX_CONCURRENT = 2
-queue_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+scheduler = scheduling.from_env(MAX_CONCURRENT)
 
 # Prometheus metrics
 REQUESTS = Counter(
@@ -50,11 +53,14 @@ class ChatRequest(BaseModel):
     model: str = "qwen2.5:7b"
     prompt: str
     max_tokens: int = 256
+    # Higher runs sooner under SCHED_POLICY=priority; ignored by fifo. max_tokens
+    # doubles as the cost hint SCHED_POLICY=sjf orders by (shortest job first).
+    priority: int = 0
 
 @router.post("/chat")
 async def chat(request: ChatRequest):
     QUEUE_DEPTH.inc()  # waiting in queue
-    async with queue_semaphore:
+    async with scheduler.slot(priority=request.priority, cost_hint=request.max_tokens):
         QUEUE_DEPTH.dec()  # left queue, now processing
         IN_FLIGHT.inc()
         start_time = time.time()
@@ -91,15 +97,15 @@ async def chat_stream(request: ChatRequest):
     """Streaming variant of /chat. Emits NDJSON: one line per token delta,
     then a final line (``done: true``) carrying usage, timings, and cost.
 
-    The semaphore and instrumentation live *inside* the generator so the slot
-    is held for the full stream lifetime — returning the StreamingResponse from
-    the handler does not block, so acquiring outside here would release the slot
-    before any tokens were produced.
+    The scheduler slot and instrumentation live *inside* the generator so the
+    slot is held for the full stream lifetime — returning the StreamingResponse
+    from the handler does not block, so acquiring outside here would release the
+    slot before any tokens were produced.
     """
 
     async def event_stream():
         QUEUE_DEPTH.inc()  # waiting in queue
-        async with queue_semaphore:
+        async with scheduler.slot(priority=request.priority, cost_hint=request.max_tokens):
             QUEUE_DEPTH.dec()  # left queue, now processing
             IN_FLIGHT.inc()
             start_time = time.time()

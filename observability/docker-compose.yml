@@ -1,0 +1,52 @@
+# Observability stack: gateway + Prometheus + Grafana.
+#
+# Ollama stays on the HOST (Metal/MPS is unavailable inside Docker on macOS);
+# the gateway container reaches it via host.docker.internal. Start Ollama first:
+#   ollama serve   # (or the Ollama app)
+# then from this directory:
+#   docker compose up --build
+#
+# Grafana:    http://localhost:3000  (anonymous admin, no login)
+# Prometheus: http://localhost:9090
+# Gateway:    http://localhost:8000
+name: mini-llm-gateway-observability
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GPU_HOURLY_RATE=${GPU_HOURLY_RATE:-0.80}
+      - SCHED_POLICY=${SCHED_POLICY:-fifo}
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # makes the host reachable on Linux too
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    depends_on:
+      - gateway
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # Anonymous admin so the dashboard opens with no login — demo convenience.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

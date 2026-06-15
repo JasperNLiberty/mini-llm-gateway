@@ -3,7 +3,8 @@ import time
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Histogram, Gauge, REGISTRY
+from prometheus_client.core import GaugeMetricFamily
 from app.ollama_client import OllamaClient
 from app.cost_tracker import tracker
 from app import scheduler as scheduling
@@ -48,6 +49,70 @@ QUEUE_DEPTH = Gauge(
     "Number of requests waiting in queue",
 )
 
+# --- Cost metrics (the thing most gateways never expose to Prometheus) --------
+# These mirror the JSON at /metrics/cost into the Prometheus scrape so Grafana
+# can chart dollars live, next to latency and throughput. Values are pushed from
+# the CostTracker snapshot after each request.
+COST_PER_MILLION = Gauge(
+    "cost_per_million_tokens",
+    "Rolling $/M tokens at the configured GPU hourly rate",
+)
+COST_PER_REQUEST_P50 = Gauge(
+    "cost_per_request_p50_usd",
+    "p50 cost per request in USD (rolling window)",
+)
+COST_PER_REQUEST_P95 = Gauge(
+    "cost_per_request_p95_usd",
+    "p95 cost per request in USD (rolling window)",
+)
+COST_SESSION_TOTAL = Gauge(
+    "cost_session_total_usd",
+    "Cumulative cost since process start in USD",
+)
+GPU_HOURLY_RATE = Gauge(
+    "gpu_hourly_rate_usd",
+    "Configured GPU hourly rate (the economic input for all cost math)",
+)
+
+
+def publish_cost_metrics() -> None:
+    """Push the CostTracker snapshot into the Prometheus gauges.
+
+    Called after each recorded request so the scrape always reflects the latest
+    rolling aggregates without duplicating the cost math.
+    """
+    snap = tracker.snapshot()
+    COST_PER_MILLION.set(snap["cost_per_million_tokens"])
+    COST_PER_REQUEST_P50.set(snap["cost_per_request_p50"])
+    COST_PER_REQUEST_P95.set(snap["cost_per_request_p95"])
+    COST_SESSION_TOTAL.set(snap["total_cost_session"])
+    GPU_HOURLY_RATE.set(snap["gpu_hourly_rate"])
+
+
+class _UtilizationCollector:
+    """Reports concurrency-slot utilization *at scrape time* (the correct
+    Prometheus pattern for an instantaneous gauge). On a discrete-GPU host you
+    would source this from DCGM; here busy-slots / capacity is the proxy, and it
+    is what makes the dashboard's utilization-adjusted $/token panel meaningful.
+    """
+
+    def collect(self):
+        cap = scheduler.max_concurrent or 1
+        util = scheduler.active / cap
+        g = GaugeMetricFamily(
+            "gpu_slots_utilization",
+            "Fraction of concurrency slots in use (instantaneous, at scrape)",
+        )
+        g.add_metric([], util)
+        yield g
+
+
+# Guarded so repeated imports (e.g. under pytest) don't double-register.
+try:
+    REGISTRY.register(_UtilizationCollector())
+except ValueError:
+    pass
+
 
 class ChatRequest(BaseModel):
     model: str = "qwen2.5:7b"
@@ -77,6 +142,7 @@ async def chat(request: ChatRequest):
                 result["output_tokens"],
                 result["tokens_per_sec"],
             )
+            publish_cost_metrics()
 
             return {
                 "response": result["response"],
@@ -145,6 +211,7 @@ async def chat_stream(request: ChatRequest):
                 LATENCY.labels(model=request.model).observe(elapsed)
                 TOKENS.labels(model=request.model).inc(output_tokens)
                 cost_usd = tracker.record(input_tokens, output_tokens, tokens_per_sec)
+                publish_cost_metrics()
 
                 yield json.dumps(
                     {

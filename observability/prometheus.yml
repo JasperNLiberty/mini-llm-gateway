@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: gateway
+    # Trailing slash: /metrics is a mounted ASGI sub-app that 307-redirects
+    # /metrics -> /metrics/. Scraping the slash directly avoids the redirect.
+    metrics_path: /metrics/
+    static_configs:
+      - targets: ["gateway:8000"]

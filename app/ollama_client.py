@@ -1,8 +1,12 @@
 import json
+import os
 
 import httpx
 
-OLLAMA_URL = "http://localhost:11434"
+# Configurable so a containerized gateway can reach Ollama on the host
+# (OLLAMA_HOST=http://host.docker.internal:11434). Default keeps local runs
+# unchanged.
+OLLAMA_URL = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 class OllamaClient:
     def __init__(self, base_url=OLLAMA_URL):

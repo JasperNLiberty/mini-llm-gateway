@@ -129,3 +129,53 @@ it happens.
 
 > Prometheus operational metrics (request counts, latency, queue depth) remain
 > available at `/metrics`.
+
+## Prometheus metrics
+
+`GET /metrics` exposes the Prometheus scrape. Beyond the usual operational
+series, **cost is a first-class Prometheus metric** here — most gateways leave
+dollars out of the scrape entirely:
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `chat_requests_total{model,status}` | counter | requests by outcome |
+| `chat_latency_seconds` | histogram | end-to-end latency (p50/p95/p99 via `histogram_quantile`) |
+| `tokens_generated_total{model}` | counter | output tokens |
+| `chat_in_flight` | gauge | requests currently processing |
+| `chat_queue_depth` | gauge | requests waiting for a slot |
+| `cost_per_million_tokens` | gauge | rolling **$/M tokens** |
+| `cost_per_request_p50_usd` / `_p95_usd` | gauge | rolling per-request cost percentiles |
+| `cost_session_total_usd` | gauge | cumulative session spend |
+| `gpu_hourly_rate_usd` | gauge | the configured economic input |
+| `gpu_slots_utilization` | gauge | busy slots / capacity, sampled at scrape |
+
+## Observability stack (Prometheus + Grafana)
+
+A one-command stack under [`observability/`](observability/) wires the gateway,
+Prometheus, and a provisioned Grafana dashboard together — turning the metrics
+above into a live **performance-and-cost** board.
+
+```bash
+ollama serve                       # Ollama stays on the host (Metal/MPS)
+cd observability
+docker compose up --build
+# Grafana:    http://localhost:3000   (anonymous admin, no login)
+# Prometheus: http://localhost:9090
+# Gateway:    http://localhost:8000
+```
+
+Then drive some load to populate it — e.g. the traffic generator in
+[`llm-serving-benchmarks`](https://github.com/JasperNLiberty/llm-serving-benchmarks)
+(`bench/traffic_sim.py`), or a quick loop of `curl` against `/ollama/chat`.
+
+The dashboard ([`observability/grafana/dashboards/llm-gateway.json`](observability/grafana/dashboards/llm-gateway.json))
+leads with **cost** — live $/M tokens, per-request p95, session total — then
+performance (latency percentiles, throughput, request rate, in-flight/queue).
+The standout panel is **effective $/M (utilization-adjusted)**: nominal $/M
+assumes a busy GPU, while effective = nominal ÷ utilization shows the *idle-GPU
+tax* you actually pay — the live version of "your $/token is higher than the
+spec sheet."
+
+> Ollama isn't containerized because Metal/MPS isn't available inside Docker on
+> macOS; the gateway reaches host Ollama via `host.docker.internal`. On a
+> CUDA host you'd add Ollama (or vLLM) as a fourth service with GPU access.

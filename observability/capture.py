@@ -92,11 +92,19 @@ def main() -> None:
             # device_scale_factor=2 -> crisp retina-quality PNGs for the writeup.
             ctx = browser.new_context(device_scale_factor=2)
 
-            # Full board (kiosk hides Grafana's nav chrome).
+            # Full board (kiosk hides Grafana's nav chrome). Grafana lazy-loads
+            # panels as they scroll into view, so a plain full_page shot comes
+            # out blank. Use a tall viewport AND wheel-scroll through the page to
+            # force every panel to render, then scroll back to top and capture.
             page = ctx.new_page()
-            page.set_viewport_size({"width": 1400, "height": 900})
+            page.set_viewport_size({"width": 1500, "height": 2400})
             page.goto(f"{args.grafana}{DASH_FULL}?{rng}&kiosk", wait_until="load")
-            page.wait_for_timeout(4000)  # let panels fetch + draw
+            page.wait_for_timeout(2500)
+            for _ in range(8):
+                page.mouse.wheel(0, 500)
+                page.wait_for_timeout(350)
+            page.mouse.wheel(0, -6000)   # back to top
+            page.wait_for_timeout(2500)  # let charts settle
             page.screenshot(path=str(OUT / "dashboard-full.png"), full_page=True)
             print("  saved dashboard-full.png")
 

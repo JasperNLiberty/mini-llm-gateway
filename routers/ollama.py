@@ -89,6 +89,12 @@ def publish_cost_metrics() -> None:
     GPU_HOURLY_RATE.set(snap["gpu_hourly_rate"])
 
 
+# The GPU rate is a constant config input, not a per-request measurement —
+# publish it once at startup so the gauge reads correctly even with zero traffic
+# (otherwise it sits at the gauge's initial 0 until the first request).
+GPU_HOURLY_RATE.set(tracker.gpu_hourly_rate)
+
+
 class _UtilizationCollector:
     """Reports concurrency-slot utilization *at scrape time* (the correct
     Prometheus pattern for an instantaneous gauge). On a discrete-GPU host you

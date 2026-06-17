@@ -1,4 +1,4 @@
-.PHONY: serve test observe observe-docker
+.PHONY: serve test observe observe-docker capture
 
 # Run the gateway (host, no container).
 serve:
@@ -17,3 +17,8 @@ observe:
 # Observability via Docker compose (gateway + Prometheus + Grafana containers).
 observe-docker:
 	cd observability && docker compose up --build
+
+# Drive load and screenshot every Grafana panel to observability/screenshots/.
+# Needs the stack up (make serve + make observe) and the image-renderer plugin.
+capture:
+	./observability/capture.sh

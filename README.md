@@ -196,3 +196,22 @@ The standout panel is **effective $/M (utilization-adjusted)**: nominal $/M
 assumes a busy GPU, while effective = nominal ÷ utilization shows the *idle-GPU
 tax* you actually pay — the live version of "your $/token is higher than the
 spec sheet."
+
+### Capture screenshots
+
+With the stack up, one command drives load and saves every panel as a PNG:
+
+```bash
+make capture          # 60s of mixed load -> observability/screenshots/*.png
+DURATION=120 MODEL=llama3.2:1b make capture
+```
+
+`make capture` runs [`observability/capture.sh`](observability/capture.sh): it
+preflights the stack, fires a stdlib load generator
+([`loadgen.py`](observability/loadgen.py)) with mixed prompt sizes, then pulls
+each panel and the full board via Grafana's render API.
+
+> The render API needs Grafana's **image-renderer** plugin (one-time install).
+> If it's missing, `capture.sh` prints the exact command:
+> `grafana cli --homepath "$(brew --prefix grafana)/share/grafana" plugins install grafana-image-renderer`,
+> then restart `make observe`.

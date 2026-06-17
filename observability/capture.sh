@@ -34,7 +34,7 @@ Grafana image-renderer plugin not found — the render API needs it.
 Install it into the same local plugins dir 'make observe' uses, then restart it:
 
   mkdir -p "$HERE/.local/grafana-plugins"
-  grafana cli --pluginsDir "$HERE/.local/grafana-plugins" plugins install grafana-image-renderer
+  grafana cli --homepath "\$(brew --prefix grafana)/share/grafana" --pluginsDir "$HERE/.local/grafana-plugins" plugins install grafana-image-renderer
   # stop 'make observe' (Ctrl-C), then run 'make observe' again
 
 Then re-run this script. (Alternatively, capture the panels manually from

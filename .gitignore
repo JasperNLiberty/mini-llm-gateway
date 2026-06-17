@@ -62,3 +62,6 @@ htmlcov/
 
 # Context
 context/
+
+# Local (no-Docker) observability runtime: generated provisioning + TSDB/Grafana data
+observability/.local/

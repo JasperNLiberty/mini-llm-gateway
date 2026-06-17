@@ -151,18 +151,39 @@ dollars out of the scrape entirely:
 
 ## Observability stack (Prometheus + Grafana)
 
-A one-command stack under [`observability/`](observability/) wires the gateway,
-Prometheus, and a provisioned Grafana dashboard together — turning the metrics
-above into a live **performance-and-cost** board.
+The stack under [`observability/`](observability/) wires the gateway, Prometheus,
+and a **provisioned** Grafana dashboard together — turning the metrics above into
+a live **performance-and-cost** board. Two ways to run it; both use the same
+dashboard JSON.
+
+### Option A — on the host, no Docker (recommended locally)
+
+Everything is on `localhost`, so there's no container networking to deal with.
 
 ```bash
-ollama serve                       # Ollama stays on the host (Metal/MPS)
-cd observability
-docker compose up --build
-# Grafana:    http://localhost:3000   (anonymous admin, no login)
-# Prometheus: http://localhost:9090
-# Gateway:    http://localhost:8000
+brew install prometheus grafana
+ollama serve                                  # Ollama on the host (Metal/MPS)
+make serve                                    # the gateway, in one shell
+make observe                                  # Prometheus + Grafana, in another
+# Grafana :3000 (anon admin) · Prometheus :9090 · Gateway :8000 · Ctrl-C stops both
 ```
+
+`make observe` runs [`observability/run-local.sh`](observability/run-local.sh),
+which generates host-local provisioning (datasource → `localhost:9090`, scrape →
+`localhost:8000`) and keeps all runtime data under `observability/.local/`
+(git-ignored). Nothing is installed globally beyond the two brew packages.
+
+### Option B — Docker compose
+
+Conventional, runs anywhere with Docker. Ollama still runs on the host (Metal/MPS
+isn't available inside Docker on macOS), reached via `host.docker.internal`.
+
+```bash
+ollama serve
+make observe-docker        # = cd observability && docker compose up --build
+```
+
+### What you get
 
 Then drive some load to populate it — e.g. the traffic generator in
 [`llm-serving-benchmarks`](https://github.com/JasperNLiberty/llm-serving-benchmarks)
@@ -175,7 +196,3 @@ The standout panel is **effective $/M (utilization-adjusted)**: nominal $/M
 assumes a busy GPU, while effective = nominal ÷ utilization shows the *idle-GPU
 tax* you actually pay — the live version of "your $/token is higher than the
 spec sheet."
-
-> Ollama isn't containerized because Metal/MPS isn't available inside Docker on
-> macOS; the gateway reaches host Ollama via `host.docker.internal`. On a
-> CUDA host you'd add Ollama (or vLLM) as a fourth service with GPU access.

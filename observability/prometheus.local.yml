@@ -1,0 +1,12 @@
+# No-Docker variant: scrape the gateway running on the host (uvicorn on :8000).
+# Same as prometheus.yml but the target is localhost, not the compose service.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: gateway
+    # Trailing slash avoids the /metrics -> /metrics/ ASGI redirect.
+    metrics_path: /metrics/
+    static_configs:
+      - targets: ["localhost:8000"]

@@ -1,4 +1,4 @@
-.PHONY: serve test observe observe-docker capture
+.PHONY: serve test observe observe-docker capture capture-render
 
 # Run the gateway (host, no container).
 serve:
@@ -19,6 +19,12 @@ observe-docker:
 	cd observability && docker compose up --build
 
 # Drive load and screenshot every Grafana panel to observability/screenshots/.
-# Needs the stack up (make serve + make observe) and the image-renderer plugin.
+# Headless-browser capture (Playwright) — works on Apple Silicon, no plugin.
+# One time:  pip install playwright && playwright install chromium
 capture:
+	python observability/capture.py
+
+# Alternative capture via Grafana's render API (x86_64 / Linux only; the
+# image-renderer plugin has no darwin-arm64 build).
+capture-render:
 	./observability/capture.sh

@@ -199,23 +199,25 @@ spec sheet."
 
 ### Capture screenshots
 
-With the stack up, one command drives load and saves every panel as a PNG:
+With the stack up, one command drives load and saves every panel + the full
+board as PNGs — via a headless browser (Playwright), so it needs no Grafana
+plugin and works on Apple Silicon.
 
 ```bash
-make capture          # 60s of mixed load -> observability/screenshots/*.png
+pip install playwright && playwright install chromium   # one time
+make capture                                            # 60s load -> screenshots/*.png
 DURATION=120 MODEL=llama3.2:1b make capture
+python observability/capture.py --no-load --theme dark  # capture current state, dark
 ```
 
-`make capture` runs [`observability/capture.sh`](observability/capture.sh): it
-preflights the stack, fires a stdlib load generator
-([`loadgen.py`](observability/loadgen.py)) with mixed prompt sizes, then pulls
-each panel and the full board via Grafana's render API.
+`make capture` runs [`observability/capture.py`](observability/capture.py): it
+waits for the stack, fires the stdlib load generator
+([`loadgen.py`](observability/loadgen.py)) with mixed prompt sizes, then loads
+the provisioned dashboard in headless Chromium and screenshots the full board
+and each `d-solo` panel at 2× scale.
 
-> The render API needs Grafana's **image-renderer** plugin (one-time install).
-> Install it into the same local plugins dir `make observe` uses, then restart it:
-> ```bash
-> grafana cli --homepath "$(brew --prefix grafana)/share/grafana" \
->   --pluginsDir "$PWD/observability/.local/grafana-plugins" \
->   plugins install grafana-image-renderer
-> ```
-> `capture.sh` prints this exact command (with an absolute path) if the plugin is missing.
+> **Alternative (x86_64 / Linux): `make capture-render`** uses Grafana's render
+> API instead ([`capture.sh`](observability/capture.sh)). Note the
+> `grafana-image-renderer` plugin has **no darwin-arm64 build**, so on Apple
+> Silicon use the Playwright path above (or screenshot the live board at
+> `localhost:3000` by hand — it's already provisioned).

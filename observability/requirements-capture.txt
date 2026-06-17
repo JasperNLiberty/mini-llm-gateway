@@ -1,0 +1,3 @@
+# Optional: headless-browser screenshot capture (observability/capture.py).
+# After installing, fetch the browser binary:  playwright install chromium
+playwright

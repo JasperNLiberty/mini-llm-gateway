@@ -212,6 +212,8 @@ preflights the stack, fires a stdlib load generator
 each panel and the full board via Grafana's render API.
 
 > The render API needs Grafana's **image-renderer** plugin (one-time install).
-> If it's missing, `capture.sh` prints the exact command:
-> `grafana cli --homepath "$(brew --prefix grafana)/share/grafana" plugins install grafana-image-renderer`,
-> then restart `make observe`.
+> Install it into the same local plugins dir `make observe` uses, then restart it:
+> ```bash
+> grafana cli --pluginsDir "$PWD/observability/.local/grafana-plugins" plugins install grafana-image-renderer
+> ```
+> `capture.sh` prints this exact command (with an absolute path) if the plugin is missing.

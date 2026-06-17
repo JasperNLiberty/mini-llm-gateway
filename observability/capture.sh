@@ -31,9 +31,11 @@ curl -sf "$GRAFANA/api/health" >/dev/null 2>&1 \
 if ! curl -sf "$GRAFANA/api/plugins/grafana-image-renderer/settings" >/dev/null 2>&1; then
   cat <<MSG
 Grafana image-renderer plugin not found — the render API needs it.
-Install once, then restart 'make observe':
+Install it into the same local plugins dir 'make observe' uses, then restart it:
 
-  grafana cli --homepath "\$(brew --prefix grafana)/share/grafana" plugins install grafana-image-renderer
+  mkdir -p "$HERE/.local/grafana-plugins"
+  grafana cli --pluginsDir "$HERE/.local/grafana-plugins" plugins install grafana-image-renderer
+  # stop 'make observe' (Ctrl-C), then run 'make observe' again
 
 Then re-run this script. (Alternatively, capture the panels manually from
 $GRAFANA — the dashboard is already provisioned.)

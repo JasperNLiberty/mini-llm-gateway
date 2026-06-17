@@ -36,7 +36,8 @@ GRAFANA_HOME="$(brew --prefix grafana 2>/dev/null)/share/grafana"
 # --- generate host-local provisioning (localhost URL + absolute dash path) --
 PROV="$LOCAL/provisioning"
 mkdir -p "$PROV/datasources" "$PROV/dashboards" \
-         "$LOCAL/prometheus-data" "$LOCAL/grafana-data" "$LOCAL/grafana-logs"
+         "$LOCAL/prometheus-data" "$LOCAL/grafana-data" "$LOCAL/grafana-logs" \
+         "$LOCAL/grafana-plugins"
 
 cat > "$PROV/datasources/datasource.yml" <<YAML
 apiVersion: 1
@@ -71,6 +72,7 @@ PROM_PID=$!
 # --- start grafana (all writable paths under .local; provisioning from PROV)-
 GF_PATHS_DATA="$LOCAL/grafana-data" \
 GF_PATHS_LOGS="$LOCAL/grafana-logs" \
+GF_PATHS_PLUGINS="$LOCAL/grafana-plugins" \
 GF_PATHS_PROVISIONING="$PROV" \
 GF_AUTH_ANONYMOUS_ENABLED=true \
 GF_AUTH_ANONYMOUS_ORG_ROLE=Admin \

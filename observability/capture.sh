@@ -31,14 +31,16 @@ curl -sf "$GRAFANA/api/health" >/dev/null 2>&1 \
 if ! curl -sf "$GRAFANA/api/plugins/grafana-image-renderer/settings" >/dev/null 2>&1; then
   cat <<MSG
 Grafana image-renderer plugin not found — the render API needs it.
-Install it into the same local plugins dir 'make observe' uses, then restart it:
 
-  mkdir -p "$HERE/.local/grafana-plugins"
+NOTE: this plugin has NO Apple Silicon (darwin-arm64) build — the cli install
+fails there with 'archNotFound'. On an arm64 Mac, capture the dashboard another
+way instead:
+  - open $GRAFANA in a browser (already provisioned) and screenshot, or
+  - use a headless-browser capture (Playwright) that needs no Grafana plugin.
+
+On x86_64 / Linux you can install the plugin into the local plugins dir:
   grafana cli --homepath "\$(brew --prefix grafana)/share/grafana" --pluginsDir "$HERE/.local/grafana-plugins" plugins install grafana-image-renderer
-  # stop 'make observe' (Ctrl-C), then run 'make observe' again
-
-Then re-run this script. (Alternatively, capture the panels manually from
-$GRAFANA — the dashboard is already provisioned.)
+  # then restart 'make observe' and re-run this script.
 MSG
   exit 2
 fi

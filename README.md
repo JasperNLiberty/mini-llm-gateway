@@ -192,10 +192,18 @@ Then drive some load to populate it — e.g. the traffic generator in
 The dashboard ([`observability/grafana/dashboards/llm-gateway.json`](observability/grafana/dashboards/llm-gateway.json))
 leads with **cost** — live $/M tokens, per-request p95, session total — then
 performance (latency percentiles, throughput, request rate, in-flight/queue).
+
+![Performance & cost dashboard](observability/screenshots/dashboard-full.png)
+
 The standout panel is **effective $/M (utilization-adjusted)**: nominal $/M
 assumes a busy GPU, while effective = nominal ÷ utilization shows the *idle-GPU
 tax* you actually pay — the live version of "your $/token is higher than the
 spec sheet."
+
+![Effective $/M tokens, utilization-adjusted](observability/screenshots/panel-5.png)
+
+The spike is a burst of load draining: as utilization falls between requests the
+effective cost per token shoots up, even though the nominal rate is unchanged.
 
 ### Capture screenshots
 

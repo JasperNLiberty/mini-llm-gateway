@@ -47,6 +47,58 @@ class OllamaClient:
             "tokens": output_tokens,
         }
 
+    async def chat(self, model: str, prompt: str, max_tokens: int = 1024,
+                   think: bool = True) -> dict:
+        """Non-streaming /api/chat with optional thinking.
+
+        For a reasoning model with ``think=True``, Ollama returns the hidden
+        reasoning in ``message.thinking`` separately from ``message.content``,
+        which is what lets the gateway report the thinking/answer split. Ollama
+        only gives a combined ``eval_count``, so per-part token counts are
+        apportioned by character length (a good proxy at the chat level).
+        """
+        payload: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {"num_predict": max_tokens},
+        }
+        if think:
+            payload["think"] = True
+        response = await self.client.post(f"{self.base_url}/api/chat", json=payload)
+        data = response.json()
+        if "error" in data:
+            raise Exception(data["error"])
+
+        msg = data.get("message", {}) or {}
+        thinking = msg.get("thinking") or ""
+        answer = msg.get("content") or ""
+
+        output_tokens = data.get("eval_count", 0)
+        eval_duration_ns = data.get("eval_duration", 0)
+        tokens_per_sec = (
+            output_tokens / (eval_duration_ns / 1e9) if eval_duration_ns > 0 else 0.0
+        )
+
+        # Apportion total output tokens into thinking vs answer by char length.
+        think_chars, ans_chars = len(thinking), len(answer)
+        total_chars = think_chars + ans_chars
+        thinking_tokens = (
+            round(output_tokens * think_chars / total_chars) if total_chars else 0
+        )
+        answer_tokens = output_tokens - thinking_tokens
+
+        return {
+            "response": answer,
+            "thinking": thinking,
+            "input_tokens": data.get("prompt_eval_count", 0),
+            "output_tokens": output_tokens,
+            "thinking_tokens": thinking_tokens,
+            "answer_tokens": answer_tokens,
+            "tokens_per_sec": tokens_per_sec,
+            "tokens": output_tokens,  # compat with existing token metric
+        }
+
     async def generate_stream(self, model: str, prompt: str, max_tokens: int = 256):
         """Stream raw Ollama NDJSON chunks as they arrive.
 

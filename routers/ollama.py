@@ -74,6 +74,21 @@ GPU_HOURLY_RATE = Gauge(
     "Configured GPU hourly rate (the economic input for all cost math)",
 )
 
+# --- Reasoning metrics --------------------------------------------------------
+# Split the output tokens of reasoning requests into hidden "thinking" vs visible
+# "answer", so the dashboard can show the thinking-token share live. Most
+# gateways don't separate these; you pay for both.
+THINKING_TOKENS = Counter(
+    "thinking_tokens_total",
+    "Hidden reasoning ('thinking') tokens generated",
+    ["model"],
+)
+ANSWER_TOKENS = Counter(
+    "answer_tokens_total",
+    "Visible answer (content) tokens generated on reasoning requests",
+    ["model"],
+)
+
 
 def publish_cost_metrics() -> None:
     """Push the CostTracker snapshot into the Prometheus gauges.
@@ -154,6 +169,66 @@ async def chat(request: ChatRequest):
                 "response": result["response"],
                 "input_tokens": result["input_tokens"],
                 "output_tokens": result["output_tokens"],
+                "tokens_per_sec": result["tokens_per_sec"],
+                "cost_usd": cost_usd,
+            }
+        except Exception as e:
+            REQUESTS.labels(model=request.model, status="error").inc()
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            IN_FLIGHT.dec()
+
+
+class ThinkRequest(BaseModel):
+    model: str = "deepseek-r1:7b"
+    prompt: str
+    max_tokens: int = 1024
+    priority: int = 0
+    # Set False to run a non-reasoning baseline through the same path/metrics
+    # for an apples-to-apples comparison.
+    think: bool = True
+
+
+@router.post("/think")
+async def think(request: ThinkRequest):
+    """Reasoning-aware inference via Ollama /api/chat.
+
+    Same scheduling, cost, and Prometheus instrumentation as /chat, plus it
+    separates hidden *thinking* tokens from the visible answer and records both
+    — so reasoning traffic shows up on the Grafana board with a live thinking
+    share, instead of bypassing the gateway entirely.
+    """
+    QUEUE_DEPTH.inc()
+    async with scheduler.slot(priority=request.priority, cost_hint=request.max_tokens):
+        QUEUE_DEPTH.dec()
+        IN_FLIGHT.inc()
+        start_time = time.time()
+        try:
+            result = await client.chat(
+                request.model, request.prompt, request.max_tokens, think=request.think
+            )
+            elapsed = time.time() - start_time
+
+            REQUESTS.labels(model=request.model, status="success").inc()
+            LATENCY.labels(model=request.model).observe(elapsed)
+            TOKENS.labels(model=request.model).inc(result["tokens"])
+            THINKING_TOKENS.labels(model=request.model).inc(result["thinking_tokens"])
+            ANSWER_TOKENS.labels(model=request.model).inc(result["answer_tokens"])
+
+            cost_usd = tracker.record(
+                result["input_tokens"],
+                result["output_tokens"],
+                result["tokens_per_sec"],
+            )
+            publish_cost_metrics()
+
+            return {
+                "response": result["response"],
+                "thinking": result["thinking"],
+                "input_tokens": result["input_tokens"],
+                "output_tokens": result["output_tokens"],
+                "thinking_tokens": result["thinking_tokens"],
+                "answer_tokens": result["answer_tokens"],
                 "tokens_per_sec": result["tokens_per_sec"],
                 "cost_usd": cost_usd,
             }

@@ -143,6 +143,33 @@
         { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "chat_in_flight", "legendFormat": "in-flight" },
         { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "chat_queue_depth", "legendFormat": "queued" }
       ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Reasoning: thinking vs answer tokens/sec",
+      "description": "Hidden thinking tokens vs visible answer tokens generated per second on /ollama/think requests. Thinking tokens are billed but never shown to the user.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(thinking_tokens_total[1m]))", "legendFormat": "thinking" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(answer_tokens_total[1m]))", "legendFormat": "answer" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Reasoning: thinking-token share",
+      "description": "Fraction of generated tokens spent on hidden reasoning. High share = a lot of the bill is invisible to the user (the overthinking signal).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(thinking_tokens_total[5m])) / (sum(rate(thinking_tokens_total[5m])) + sum(rate(answer_tokens_total[5m])))", "legendFormat": "thinking share" }
+      ]
     }
   ]
 }

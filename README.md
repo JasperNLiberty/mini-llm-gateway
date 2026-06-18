@@ -98,6 +98,34 @@ Every inference response carries cost metadata alongside the output:
 }
 ```
 
+### Reasoning models — `POST /ollama/think`
+
+For thinking models, `/ollama/think` proxies Ollama's `/api/chat` with `think=true`
+and **separates the hidden reasoning from the answer**, billing both and recording
+the split — so reasoning traffic flows through the gateway's cost + Prometheus
+instrumentation instead of bypassing it.
+
+```bash
+curl -s localhost:8000/ollama/think \
+  -d '{"model":"deepseek-r1:7b","prompt":"A store had 120 apples. Sold 1/3, then 1/4 of the rest. How many left?"}'
+```
+
+```json
+{
+  "response": "60",
+  "thinking": "First, one third of 120 is 40 ...",
+  "thinking_tokens": 145,
+  "answer_tokens": 262,
+  "tokens_per_sec": 41.8,
+  "cost_usd": 0.0023611
+}
+```
+
+It shares the scheduler, cost tracker, and metrics with `/chat`, and adds
+`thinking_tokens_total` / `answer_tokens_total` (see below) — the data behind the
+dashboard's thinking-share panels. This is the live counterpart to the
+[reasoning-tax benchmark](https://github.com/JasperNLiberty/llm-serving-benchmarks/blob/main/REASONING.md).
+
 ## `GET /metrics/cost`
 
 Returns live, session-wide cost aggregates:
@@ -148,6 +176,8 @@ dollars out of the scrape entirely:
 | `cost_session_total_usd` | gauge | cumulative session spend |
 | `gpu_hourly_rate_usd` | gauge | the configured economic input |
 | `gpu_slots_utilization` | gauge | busy slots / capacity, sampled at scrape |
+| `thinking_tokens_total{model}` | counter | hidden reasoning tokens (`/think` requests) |
+| `answer_tokens_total{model}` | counter | visible answer tokens (`/think` requests) |
 
 ## Observability stack (Prometheus + Grafana)
 
@@ -185,13 +215,21 @@ make observe-docker        # = cd observability && docker compose up --build
 
 ### What you get
 
-Then drive some load to populate it — e.g. the traffic generator in
+Then drive some load to populate it — `python observability/loadgen.py`, the
+traffic generator in
 [`llm-serving-benchmarks`](https://github.com/JasperNLiberty/llm-serving-benchmarks)
-(`bench/traffic_sim.py`), or a quick loop of `curl` against `/ollama/chat`.
+(`bench/traffic_sim.py`), or a quick loop of `curl`. For the **reasoning panels**,
+drive `/ollama/think` traffic:
+
+```bash
+python observability/loadgen.py --reasoning   # deepseek-r1:7b -> /ollama/think
+```
 
 The dashboard ([`observability/grafana/dashboards/llm-gateway.json`](observability/grafana/dashboards/llm-gateway.json))
 leads with **cost** — live $/M tokens, per-request p95, session total — then
-performance (latency percentiles, throughput, request rate, in-flight/queue).
+performance (latency percentiles, throughput, request rate, in-flight/queue), and
+finally **reasoning** (thinking vs answer tokens/sec, and the thinking-token share
+— the live overthinking signal).
 
 ![Performance & cost dashboard](observability/screenshots/dashboard-full.png)
 

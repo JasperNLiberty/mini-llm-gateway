@@ -99,6 +99,34 @@ class OllamaClient:
             "tokens": output_tokens,  # compat with existing token metric
         }
 
+    async def chat_stream(self, model: str, prompt: str, max_tokens: int = 1024,
+                          think: bool = True):
+        """Stream raw /api/chat NDJSON chunks (with optional thinking).
+
+        Token chunks carry a ``message.thinking`` *or* ``message.content`` delta;
+        the final chunk has ``done: true`` plus usage/timing. Counting the two
+        kinds of delta gives an **exact** thinking/answer token split — the
+        streaming counterpart to ``chat()``'s character-proportioned estimate.
+        """
+        payload: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": True,
+            "options": {"num_predict": max_tokens},
+        }
+        if think:
+            payload["think"] = True
+        async with self.client.stream(
+            "POST", f"{self.base_url}/api/chat", json=payload
+        ) as response:
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                data = json.loads(line)
+                if "error" in data:
+                    raise Exception(data["error"])
+                yield data
+
     async def generate_stream(self, model: str, prompt: str, max_tokens: int = 256):
         """Stream raw Ollama NDJSON chunks as they arrive.
 

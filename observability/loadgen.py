@@ -67,7 +67,8 @@ def main():
     args = ap.parse_args()
 
     if args.reasoning:
-        path, prompts, think = "/ollama/think", REASONING_PROMPTS, True
+        # /think/stream gives exact thinking/answer token counts (delta tallies).
+        path, prompts, think = "/ollama/think/stream", REASONING_PROMPTS, True
         model = "deepseek-r1:7b" if args.model == "qwen2.5:7b" else args.model
     else:
         path, prompts, think, model = "/ollama/chat", PROMPTS, False, args.model

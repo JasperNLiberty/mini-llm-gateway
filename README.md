@@ -126,6 +126,14 @@ It shares the scheduler, cost tracker, and metrics with `/chat`, and adds
 dashboard's thinking-share panels. This is the live counterpart to the
 [reasoning-tax benchmark](https://github.com/JasperNLiberty/llm-serving-benchmarks/blob/main/REASONING.md).
 
+**Token-split accuracy.** `/think` is non-streaming, so Ollama returns only a
+combined `eval_count`; the thinking/answer split is **estimated by character
+proportion**. **`POST /ollama/think/stream`** streams `/api/chat` and tags each
+delta as thinking or answer, so the split is an **exact** per-token tally (NDJSON:
+one line per delta with its `phase`, then a final `done` line with usage + cost).
+Use `/think/stream` when the count must be exact; `/think` when a one-shot JSON
+response is more convenient.
+
 ## `GET /metrics/cost`
 
 Returns live, session-wide cost aggregates:

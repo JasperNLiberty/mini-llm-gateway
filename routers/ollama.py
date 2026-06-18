@@ -239,6 +239,96 @@ async def think(request: ThinkRequest):
             IN_FLIGHT.dec()
 
 
+@router.post("/think/stream")
+async def think_stream(request: ThinkRequest):
+    """Streaming reasoning endpoint with **exact** thinking/answer token counts.
+
+    Streams Ollama /api/chat and tags each delta as thinking or answer, so the
+    per-phase token counts are real delta tallies (not the character-proportioned
+    estimate of /think). Emits NDJSON: one line per delta with its ``phase``,
+    then a final ``done`` line with usage, timings, and cost.
+    """
+
+    async def event_stream():
+        QUEUE_DEPTH.inc()
+        async with scheduler.slot(priority=request.priority, cost_hint=request.max_tokens):
+            QUEUE_DEPTH.dec()
+            IN_FLIGHT.inc()
+            start_time = time.time()
+            first_token_time = None
+            thinking_text = ""
+            answer_text = ""
+            thinking_tokens = 0
+            answer_tokens = 0
+            input_tokens = 0
+            output_tokens = 0
+            tokens_per_sec = 0.0
+            try:
+                async for chunk in client.chat_stream(
+                    request.model, request.prompt, request.max_tokens, think=request.think
+                ):
+                    if chunk.get("done"):
+                        output_tokens = chunk.get("eval_count", 0)
+                        input_tokens = chunk.get("prompt_eval_count", 0)
+                        eval_duration_ns = chunk.get("eval_duration", 0)
+                        tokens_per_sec = (
+                            output_tokens / (eval_duration_ns / 1e9)
+                            if eval_duration_ns > 0 else 0.0
+                        )
+                        continue
+                    msg = chunk.get("message") or {}
+                    th = msg.get("thinking")
+                    ct = msg.get("content")
+                    if th:
+                        if first_token_time is None:
+                            first_token_time = time.time()
+                        thinking_tokens += 1
+                        thinking_text += th
+                        yield json.dumps(
+                            {"phase": "thinking", "delta": th, "t": time.time() - start_time}
+                        ) + "\n"
+                    if ct:
+                        if first_token_time is None:
+                            first_token_time = time.time()
+                        answer_tokens += 1
+                        answer_text += ct
+                        yield json.dumps(
+                            {"phase": "answer", "delta": ct, "t": time.time() - start_time}
+                        ) + "\n"
+
+                elapsed = time.time() - start_time
+                ttft = (first_token_time - start_time) if first_token_time else None
+
+                REQUESTS.labels(model=request.model, status="success").inc()
+                LATENCY.labels(model=request.model).observe(elapsed)
+                TOKENS.labels(model=request.model).inc(output_tokens)
+                THINKING_TOKENS.labels(model=request.model).inc(thinking_tokens)
+                ANSWER_TOKENS.labels(model=request.model).inc(answer_tokens)
+                cost_usd = tracker.record(input_tokens, output_tokens, tokens_per_sec)
+                publish_cost_metrics()
+
+                yield json.dumps({
+                    "done": True,
+                    "response": answer_text,
+                    "thinking": thinking_text,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "thinking_tokens": thinking_tokens,
+                    "answer_tokens": answer_tokens,
+                    "tokens_per_sec": tokens_per_sec,
+                    "ttft": ttft,
+                    "elapsed": elapsed,
+                    "cost_usd": cost_usd,
+                }) + "\n"
+            except Exception as e:
+                REQUESTS.labels(model=request.model, status="error").inc()
+                yield json.dumps({"error": str(e)}) + "\n"
+            finally:
+                IN_FLIGHT.dec()
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """Streaming variant of /chat. Emits NDJSON: one line per token delta,

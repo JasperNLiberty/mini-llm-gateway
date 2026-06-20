@@ -65,3 +65,5 @@ context/
 
 # Local (no-Docker) observability runtime: generated provisioning + TSDB/Grafana data
 observability/.local/
+# Local scratch dashboard captures (real case studies live in llm-serving-benchmarks/examples)
+observability/screenshots/*.png

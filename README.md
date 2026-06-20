@@ -239,17 +239,15 @@ performance (latency percentiles, throughput, request rate, in-flight/queue), an
 finally **reasoning** (thinking vs answer tokens/sec, and the thinking-token share
 — the live overthinking signal).
 
-![Performance & cost dashboard](observability/screenshots/dashboard-full.png)
-
 The standout panel is **effective $/M (utilization-adjusted)**: nominal $/M
 assumes a busy GPU, while effective = nominal ÷ utilization shows the *idle-GPU
 tax* you actually pay — the live version of "your $/token is higher than the
 spec sheet."
 
-![Effective $/M tokens, utilization-adjusted](observability/screenshots/panel-5.png)
-
-The spike is a burst of load draining: as utilization falls between requests the
-effective cost per token shoots up, even though the nominal rate is unchanged.
+> **Dashboards in context:** worked examples that drive this board under real
+> load and read the curves live — reasoning, traffic/capacity, model size, and
+> more — live in the benchmark repo's case studies:
+> [`llm-serving-benchmarks/examples`](https://github.com/JasperNLiberty/llm-serving-benchmarks/tree/main/examples).
 
 ### Capture screenshots
 
